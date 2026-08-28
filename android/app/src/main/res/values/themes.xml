@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.FilmIn" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">#E50914</item>
-        <item name="colorPrimaryVariant">#F6121D</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
+    <style name="Theme.FilmIn" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:statusBarColor">#0F1014</item>
         <item name="android:navigationBarColor">#0F1014</item>
         <item name="android:windowBackground">#0F1014</item>
