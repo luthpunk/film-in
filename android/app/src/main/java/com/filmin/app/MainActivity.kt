@@ -80,7 +80,6 @@ class MainActivity : ComponentActivity() {
                         )
                     ) { backStackEntry ->
                         val slug = backStackEntry.arguments?.getString("slug") ?: ""
-                        val type = backStackEntry.arguments?.getString("type") ?: "movie"
 
                         LaunchedEffect(slug) {
                             if (currentDetail == null || currentDetail?.slug != slug) {
@@ -94,28 +93,20 @@ class MainActivity : ComponentActivity() {
                             detail = currentDetail,
                             isLoading = isDetailLoading,
                             onBackClick = { navController.popBackStack() },
-                            onPlayServerClick = { streamUrl, serverName ->
-                                val encodedUrl = Uri.encode(streamUrl)
-                                val encodedName = Uri.encode(serverName)
-                                navController.navigate("player/$encodedUrl/$encodedName")
+                            onPlayAutoClick = { detailItem ->
+                                navController.navigate("player/${detailItem.slug}")
                             }
                         )
                     }
 
                     composable(
-                        route = "player/{streamUrl}/{serverName}",
+                        route = "player/{slug}",
                         arguments = listOf(
-                            navArgument("streamUrl") { type = NavType.StringType },
-                            navArgument("serverName") { type = NavType.StringType }
+                            navArgument("slug") { type = NavType.StringType }
                         )
-                    ) { backStackEntry ->
-                        val rawUrl = backStackEntry.arguments?.getString("streamUrl") ?: ""
-                        val streamUrl = Uri.decode(rawUrl)
-                        val serverName = Uri.decode(backStackEntry.arguments?.getString("serverName") ?: "Server Stream")
-
+                    ) {
                         PlayerScreen(
-                            streamUrl = streamUrl,
-                            serverName = serverName,
+                            detail = currentDetail,
                             onBackClick = { navController.popBackStack() }
                         )
                     }

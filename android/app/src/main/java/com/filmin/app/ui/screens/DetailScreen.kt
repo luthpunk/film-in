@@ -1,8 +1,6 @@
 package com.filmin.app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -12,12 +10,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -26,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.filmin.app.data.model.MovieDetail
-import com.filmin.app.data.model.StreamServer
 import com.filmin.app.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,9 +30,8 @@ fun DetailScreen(
     detail: MovieDetail?,
     isLoading: Boolean,
     onBackClick: () -> Unit,
-    onPlayServerClick: (String, String) -> Unit // (serverUrl, serverName)
+    onPlayAutoClick: (MovieDetail) -> Unit
 ) {
-    var selectedServerIndex by remember { mutableIntStateOf(0) }
     val scrollState = rememberScrollState()
 
     Scaffold(
@@ -153,56 +147,19 @@ fun DetailScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Stream Server Selectors
-                    Text(
-                        text = "Pilih Server Stream:",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(detail.servers.size) { idx ->
-                            val srv = detail.servers[idx]
-                            val isSelected = selectedServerIndex == idx
-                            Surface(
-                                color = if (isSelected) AccentRed else BgCard,
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.clickable { selectedServerIndex = idx }
-                            ) {
-                                Text(
-                                    text = srv.name,
-                                    color = if (isSelected) Color.White else TextSecondary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // Big Play Video Button
-                    val currentServer = detail.servers.getOrNull(selectedServerIndex) ?: detail.servers.firstOrNull()
+                    // Automatic Play Button (No Server Selector)
                     Button(
-                        onClick = {
-                            if (currentServer != null) {
-                                onPlayServerClick(currentServer.url, currentServer.name)
-                            }
-                        },
+                        onClick = { onPlayAutoClick(detail) },
                         colors = ButtonDefaults.buttonColors(containerColor = AccentRed),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp)
+                            .height(52.dp)
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Putar Video (${currentServer?.name ?: "Server 1"})",
+                            text = "Putar Video Streaming (Otomatis)",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                             color = Color.White
@@ -241,7 +198,7 @@ fun DetailScreen(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "Sutradara: ${detail.director.ifBlank { "Lin Zhenzhao" }}",
+                        text = "Sutradara: ${detail.director}",
                         fontSize = 13.sp,
                         color = TextSecondary
                     )
