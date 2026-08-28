@@ -6,9 +6,9 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -17,6 +17,11 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
@@ -24,8 +29,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var customViewContainer: FrameLayout
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
+    private val executor = Executors.newFixedThreadPool(4)
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -43,7 +49,7 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(rootLayout)
 
-        // Configure WebView for High-Performance Video Streaming
+        // Configure WebView for High-Performance Direct Streaming & Local Scraping
         val settings = webView.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -60,12 +66,13 @@ class MainActivity : AppCompatActivity() {
             CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         }
 
-        // Standard Mobile Chrome User-Agent for streaming compatibility
         settings.userAgentString = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+        // Native Android Bridge for Direct Local On-Device Scraping
+        webView.addJavascriptInterface(AndroidScraperBridge(), "AndroidScraper")
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                // Keep streaming links inside app WebView
                 return false
             }
         }
@@ -83,7 +90,6 @@ class MainActivity : AppCompatActivity() {
                 customViewContainer.visibility = View.VISIBLE
                 webView.visibility = View.GONE
 
-                // Force Landscape Fullscreen Video
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                 window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
             }
@@ -105,10 +111,36 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Load FilmIn Web Streaming Interface
-        // Pointing to local hosted server or localhost
-        val targetUrl = intent.getStringExtra("SERVER_URL") ?: "http://localhost:5000"
-        webView.loadUrl(targetUrl)
+        // Load bundled web app directly from APK assets or local server
+        webView.loadUrl("file:///android_asset/www/index.html")
+    }
+
+    // Native Local Scraper Bridge class
+    inner class AndroidScraperBridge {
+        @JavascriptInterface
+        fun fetchHtml(targetPath: String): String {
+            return try {
+                val fullUrl = if (targetPath.startsWith("http")) targetPath else "https://z2.idlixku.com$targetPath"
+                val url = URL(fullUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                conn.connectTimeout = 8000
+                conn.readTimeout = 8000
+
+                val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                val sb = StringBuilder()
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    sb.append(line).append("\n")
+                }
+                reader.close()
+                sb.toString()
+            } catch (e: Exception) {
+                ""
+            }
+        }
     }
 
     override fun onBackPressed() {
@@ -122,6 +154,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        executor.shutdown()
         webView.destroy()
         super.onDestroy()
     }

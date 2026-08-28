@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>FilmIn - Streaming Film & Serial TV Gratis HD</title>
+  <meta name="description" content="Nonton dan streaming film terbaru, serial TV, drama Korea, dan anime sub Indo terlengkap dan jernih HD di FilmIn.">
+  <meta name="theme-color" content="#0f1014">
+  
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- App Styling -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="app-header" id="appHeader">
+    <div class="header-container">
+      <div class="brand-logo" id="logoBtn">
+        <i class="fa-solid fa-film logo-icon"></i>
+        <span class="logo-text">FILM<span class="highlight">IN</span></span>
+      </div>
+
+      <nav class="desktop-nav">
+        <a href="#" class="nav-link active" data-target="home"><i class="fa-solid fa-house"></i> Beranda</a>
+        <a href="#" class="nav-link" data-target="movies"><i class="fa-solid fa-clapperboard"></i> Film</a>
+        <a href="#" class="nav-link" data-target="series"><i class="fa-solid fa-tv"></i> Serial TV</a>
+        <a href="#" class="nav-link" data-target="genres"><i class="fa-solid fa-tags"></i> Genre</a>
+        <a href="#" class="nav-link" data-target="mylist"><i class="fa-solid fa-bookmark"></i> List Saya</a>
+      </nav>
+
+      <div class="header-right">
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass search-icon"></i>
+          <input type="text" id="searchInput" placeholder="Cari film, series, anime..." autocomplete="off">
+          <button class="clear-search-btn" id="clearSearchBtn" style="display:none;"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <button class="icon-btn mylist-shortcut-btn" id="myListBtn" title="List Saya">
+          <i class="fa-solid fa-bookmark"></i>
+          <span class="badge-count" id="listBadge">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Live Search Overlay Dropdown -->
+  <div class="search-results-overlay" id="searchResultsOverlay">
+    <div class="search-results-header">
+      <span class="results-title" id="searchResultsTitle">Hasil Pencarian</span>
+      <button class="close-search-btn" id="closeSearchBtn"><i class="fa-solid fa-xmark"></i> Close</button>
+    </div>
+    <div class="search-results-grid" id="searchResultsGrid">
+      <!-- Injected via JS -->
+    </div>
+  </div>
+
+  <!-- Main Content View Container -->
+  <main class="app-main">
+    <!-- View: Home -->
+    <section class="view-section active" id="homeView">
+      <!-- Hero Carousel Banner -->
+      <div class="hero-carousel" id="heroCarousel">
+        <div class="hero-backdrop-glow"></div>
+        <div class="hero-content">
+          <div class="hero-badges">
+            <span class="badge badge-quality"><i class="fa-solid fa-star"></i> 4K Ultra HD</span>
+            <span class="badge badge-rating" id="heroRating"><i class="fa-solid fa-star"></i> 8.5</span>
+            <span class="badge badge-type" id="heroType">FILM</span>
+            <span class="badge badge-year" id="heroYear">2024</span>
+          </div>
+          <h1 class="hero-title" id="heroTitle">Spider-Man: Brand New Day</h1>
+          <p class="hero-synopsis" id="heroSynopsis">Petualangan seru terbaru mengarungi dimensi tanpa batas untuk menyelamatkan dunia dari kejahatan besar.</p>
+          <div class="hero-actions">
+            <button class="btn btn-primary" id="heroPlayBtn"><i class="fa-solid fa-play"></i> Tonton Sekarang</button>
+            <button class="btn btn-secondary" id="heroInfoBtn"><i class="fa-solid fa-circle-info"></i> Detail Lengkap</button>
+            <button class="btn btn-icon" id="heroBookmarkBtn" title="Simpan ke List Saya"><i class="fa-regular fa-bookmark"></i></button>
+          </div>
+        </div>
+        <div class="hero-indicators" id="heroIndicators"></div>
+      </div>
+
+      <!-- Genre Pills Bar -->
+      <div class="genre-bar-container">
+        <div class="genre-pill-scroll" id="genrePills">
+          <button class="genre-pill active" data-genre="all"><i class="fa-solid fa-fire"></i> Semua</button>
+          <button class="genre-pill" data-genre="action"><i class="fa-solid fa-burst"></i> Laga (Action)</button>
+          <button class="genre-pill" data-genre="horror"><i class="fa-solid fa-ghost"></i> Horor</button>
+          <button class="genre-pill" data-genre="animation"><i class="fa-solid fa-dragon"></i> Animasi</button>
+          <button class="genre-pill" data-genre="comedy"><i class="fa-solid fa-face-laugh-beam"></i> Komedi</button>
+          <button class="genre-pill" data-genre="drama"><i class="fa-solid fa-masks-theater"></i> Drama</button>
+          <button class="genre-pill" data-genre="romance"><i class="fa-solid fa-heart"></i> Romantis</button>
+          <button class="genre-pill" data-genre="sci-fi"><i class="fa-solid fa-robot"></i> Sci-Fi</button>
+          <button class="genre-pill" data-genre="thriller"><i class="fa-solid fa-skull"></i> Thriller</button>
+        </div>
+      </div>
+
+      <!-- Rows Section -->
+      <div class="rows-container">
+        <!-- Row 1: Trending Movies -->
+        <div class="content-row">
+          <div class="row-header">
+            <h2 class="row-title"><i class="fa-solid fa-fire-flame-curated text-accent"></i> Trending Film Terbaru</h2>
+            <span class="row-subtitle">Populer di IDLIX minggu ini</span>
+          </div>
+          <div class="row-cards-wrapper" id="trendingRow">
+            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+          </div>
+        </div>
+
+        <!-- Row 2: Popular TV Series -->
+        <div class="content-row">
+          <div class="row-header">
+            <h2 class="row-title"><i class="fa-solid fa-tv text-accent"></i> Serial TV & Drama Populer</h2>
+            <span class="row-subtitle">Serial episode lengkap</span>
+          </div>
+          <div class="row-cards-wrapper" id="seriesRow">
+            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+          </div>
+        </div>
+
+        <!-- Row 3: Action & Adventure -->
+        <div class="content-row">
+          <div class="row-header">
+            <h2 class="row-title"><i class="fa-solid fa-gun text-accent"></i> Film Action Penuh Aksi</h2>
+          </div>
+          <div class="row-cards-wrapper" id="actionRow">
+            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+          </div>
+        </div>
+
+        <!-- Row 4: Horror & Mystery -->
+        <div class="content-row">
+          <div class="row-header">
+            <h2 class="row-title"><i class="fa-solid fa-ghost text-accent"></i> Horor & Misteri Mencekam</h2>
+          </div>
+          <div class="row-cards-wrapper" id="horrorRow">
+            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- View: Catalog / Grid View (Movies / Series / Genre / MyList) -->
+    <section class="view-section" id="catalogView">
+      <div class="catalog-header">
+        <h2 class="catalog-title" id="catalogTitle">Katalog Film</h2>
+        <span class="catalog-count" id="catalogCount">Memuat data...</span>
+      </div>
+      <div class="catalog-grid" id="catalogGrid">
+        <!-- Injected via JS -->
+      </div>
+    </section>
+  </main>
+
+  <!-- Player & Details Full Modal -->
+  <div class="modal-backdrop" id="detailModal">
+    <div class="modal-container">
+      <button class="modal-close-btn" id="closeModalBtn"><i class="fa-solid fa-xmark"></i></button>
+
+      <div class="modal-banner" id="modalBanner">
+        <div class="modal-banner-overlay"></div>
+        <div class="modal-banner-info">
+          <div class="modal-badges">
+            <span class="badge badge-quality" id="modalQuality">1080p HD</span>
+            <span class="badge badge-rating" id="modalRating"><i class="fa-solid fa-star"></i> 8.2</span>
+            <span class="badge badge-year" id="modalYear">2024</span>
+            <span class="badge badge-duration" id="modalDuration">120 Min</span>
+          </div>
+          <h2 class="modal-title" id="modalTitle">Judul Film</h2>
+          <div class="modal-genres" id="modalGenres"></div>
+        </div>
+      </div>
+
+      <!-- Player Section -->
+      <div class="modal-player-section" id="playerSection">
+        <div class="player-wrapper">
+          <div class="player-header-bar">
+            <span class="player-status"><i class="fa-solid fa-circle text-red animate-pulse"></i> Mengalirkan Video: <strong id="currentServerName">Server 1 (IDLIX)</strong></span>
+            <div class="server-tabs" id="serverTabs"></div>
+          </div>
+          <div class="iframe-container" id="iframeContainer">
+            <div class="player-loader" id="playerLoader">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span>Menyiapkan Pemutar Stream...</span>
+            </div>
+            <iframe id="videoIframe" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+          </div>
+        </div>
+      </div>
+
+      <!-- TV Series Episodes Selector (Shown if Series) -->
+      <div class="modal-episodes-section" id="episodesSection" style="display: none;">
+        <div class="episodes-header">
+          <h3><i class="fa-solid fa-layer-group"></i> Pilih Season & Episode</h3>
+          <select id="seasonSelect" class="season-select"></select>
+        </div>
+        <div class="episodes-grid" id="episodesGrid"></div>
+      </div>
+
+      <!-- Details & Synopsis Section -->
+      <div class="modal-body">
+        <div class="modal-synopsis-col">
+          <h3><i class="fa-solid fa-align-left"></i> Sinopsis</h3>
+          <p class="synopsis-text" id="modalSynopsis">Deskripsi film...</p>
+
+          <div class="cast-section">
+            <h3><i class="fa-solid fa-users"></i> Pemeran & Sutradara</h3>
+            <p class="director-text"><strong>Sutradara:</strong> <span id="modalDirector">-</span></p>
+            <div class="cast-tags" id="modalCast"></div>
+          </div>
+        </div>
+
+        <div class="modal-actions-col">
+          <button class="btn btn-primary btn-full" id="modalPlayBtn"><i class="fa-solid fa-play"></i> Putar Video</button>
+          <button class="btn btn-secondary btn-full" id="modalBookmarkBtn"><i class="fa-regular fa-bookmark"></i> Tambah ke List Saya</button>
+          <button class="btn btn-outline btn-full" id="modalShareBtn"><i class="fa-solid fa-share-nodes"></i> Bagikan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Navigation Bar -->
+  <nav class="mobile-bottom-nav">
+    <a href="#" class="mobile-nav-item active" data-target="home">
+      <i class="fa-solid fa-house"></i>
+      <span>Beranda</span>
+    </a>
+    <a href="#" class="mobile-nav-item" data-target="movies">
+      <i class="fa-solid fa-clapperboard"></i>
+      <span>Film</span>
+    </a>
+    <a href="#" class="mobile-nav-item" data-target="series">
+      <i class="fa-solid fa-tv"></i>
+      <span>Series</span>
+    </a>
+    <a href="#" class="mobile-nav-item" data-target="mylist">
+      <i class="fa-solid fa-bookmark"></i>
+      <span>List Saya</span>
+    </a>
+  </nav>
+
+  <!-- Notification Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- App Script -->
+  <script src="app.js" type="module"></script>
+</body>
+</html>
