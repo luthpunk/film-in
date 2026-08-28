@@ -2,8 +2,11 @@
 
 package com.filmin.app.ui.screens
 
+import android.annotation.SuppressLint
 import android.net.Uri
+import android.os.Build
 import android.view.ViewGroup
+import android.webkit.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -33,36 +36,42 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.PlayerView
 import com.filmin.app.data.model.MovieDetail
-import com.filmin.app.data.remote.ExtractedStreamResult
-import com.filmin.app.data.remote.IdlixStreamExtractor
 import com.filmin.app.ui.theme.AccentRed
 import com.filmin.app.ui.theme.BgCard
 import com.filmin.app.ui.theme.BgDark
-import kotlinx.coroutines.launch
 import kotlin.OptIn
 
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PlayerScreen(
     detail: MovieDetail?,
     onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    val extractor = remember { IdlixStreamExtractor() }
-
-    var currentServerIndex by remember { mutableIntStateOf(0) }
-    var isAllServersFailed by remember { mutableStateOf(false) }
+    var isExoPlayerPlaying by remember { mutableStateOf(false) }
     var isVideoLoading by remember { mutableStateOf(true) }
-    var isExoReady by remember { mutableStateOf(false) }
-    var statusText by remember { mutableStateOf("Mengekstrak stream video...") }
+    var statusText by remember { mutableStateOf("Melewati Cloudflare & Mengekstrak Stream...") }
+    var isAllServersFailed by remember { mutableStateOf(false) }
+    var currentServerIndex by remember { mutableIntStateOf(0) }
 
-    val totalServers = 3
+    val slug = detail?.slug ?: ""
+    val imdbId = detail?.servers?.firstOrNull()?.url?.let {
+        if (it.contains("imdb=")) it.substringAfter("imdb=") else slug
+    } ?: slug
+
+    val serverUrls = remember(detail) {
+        listOf(
+            "https://z2.idlixku.com/movie/$slug?play=1",
+            "https://vidsrc.me/embed/movie?imdb=$imdbId",
+            "https://vidsrc.to/embed/movie/$imdbId"
+        )
+    }
 
     BackHandler {
         onBackClick()
     }
 
-    // Initialize ExoPlayer (100% Pure Native Player, NO WebView in UI layout)
+    // Initialize ExoPlayer (100% Pure Native Player)
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             playWhenReady = true
@@ -75,64 +84,37 @@ fun PlayerScreen(
         }
     }
 
-    fun playCapturedStream(result: ExtractedStreamResult) {
-        isVideoLoading = true
-        statusText = "Menghubungkan ExoPlayer dengan Session Cookie..."
-
-        val reqProperties = mutableMapOf(
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer" to result.embedUrl,
-            "Origin" to "https://z2.idlixku.com",
-            "Accept" to "*/*"
-        )
-        if (result.cookies.isNotBlank()) {
-            reqProperties["Cookie"] = result.cookies
-        }
-
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(reqProperties["User-Agent"] ?: "")
-            .setDefaultRequestProperties(reqProperties)
-
-        val mediaSource: MediaSource = if (result.streamUrl.contains(".m3u8")) {
-            HlsMediaSource.Factory(httpDataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(Uri.parse(result.streamUrl)))
-        } else {
-            ProgressiveMediaSource.Factory(httpDataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(Uri.parse(result.streamUrl)))
-        }
-
-        exoPlayer.setMediaSource(mediaSource)
-        exoPlayer.prepare()
-    }
-
-    fun startExtractionForServer(index: Int) {
-        if (index >= totalServers) {
-            isAllServersFailed = true
-            isVideoLoading = false
-            return
-        }
-
-        isVideoLoading = true
-        statusText = "Mengekstrak stream Server ${index + 1}/$totalServers..."
-
-        coroutineScope.launch {
-            val result = extractor.extractStreamUrl(detail, index)
-            if (result != null && result.streamUrl.isNotBlank()) {
-                playCapturedStream(result)
-            } else {
-                if (index + 1 < totalServers) {
-                    currentServerIndex = index + 1
-                    startExtractionForServer(index + 1)
-                } else {
-                    isAllServersFailed = true
-                    isVideoLoading = false
-                }
+    fun playNativeExoPlayer(m3u8Url: String, cookies: String, embedUrl: String) {
+        try {
+            val reqProperties = mutableMapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer" to embedUrl,
+                "Origin" to "https://z2.idlixku.com",
+                "Accept" to "*/*"
+            )
+            if (cookies.isNotBlank()) {
+                reqProperties["Cookie"] = cookies
             }
-        }
-    }
 
-    LaunchedEffect(Unit) {
-        startExtractionForServer(0)
+            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                .setUserAgent(reqProperties["User-Agent"] ?: "")
+                .setDefaultRequestProperties(reqProperties)
+
+            val mediaSource: MediaSource = if (m3u8Url.contains(".m3u8")) {
+                HlsMediaSource.Factory(httpDataSourceFactory)
+                    .createMediaSource(MediaItem.fromUri(Uri.parse(m3u8Url)))
+            } else {
+                ProgressiveMediaSource.Factory(httpDataSourceFactory)
+                    .createMediaSource(MediaItem.fromUri(Uri.parse(m3u8Url)))
+            }
+
+            exoPlayer.setMediaSource(mediaSource)
+            exoPlayer.prepare()
+            isExoPlayerPlaying = true
+            isVideoLoading = false
+        } catch (e: Exception) {
+            isExoPlayerPlaying = false
+        }
     }
 
     DisposableEffect(exoPlayer) {
@@ -140,16 +122,17 @@ fun PlayerScreen(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
                     isVideoLoading = false
-                    isExoReady = true
+                    isExoPlayerPlaying = true
                 }
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                isExoReady = false
-                if (currentServerIndex + 1 < totalServers) {
+                if (currentServerIndex + 1 < serverUrls.size) {
                     currentServerIndex += 1
-                    startExtractionForServer(currentServerIndex)
+                    isExoPlayerPlaying = false
+                    isVideoLoading = true
                 } else {
+                    isExoPlayerPlaying = false
                     isAllServersFailed = true
                     isVideoLoading = false
                 }
@@ -173,7 +156,7 @@ fun PlayerScreen(
                             color = Color.White
                         )
                         Text(
-                            text = if (isExoReady) "Native ExoPlayer HLS 1080p HD" else statusText,
+                            text = if (isExoPlayerPlaying) "Native ExoPlayer HLS 1080p HD" else statusText,
                             fontSize = 11.sp,
                             color = AccentRed
                         )
@@ -227,7 +210,7 @@ fun PlayerScreen(
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             Text(
-                                text = "Ekstraksi stream HLS (.m3u8) dari server IDLIX gagal atau sedang dalam pembatasan Cloudflare. Silakan coba judul film lainnya.",
+                                text = "Ekstraksi stream HLS (.m3u8) dari server IDLIX gagal atau sedang dalam pemeliharaan jaringan. Silakan coba judul film lainnya.",
                                 fontSize = 13.sp,
                                 color = Color.White.copy(alpha = 0.7f),
                                 textAlign = TextAlign.Center,
@@ -245,7 +228,7 @@ fun PlayerScreen(
                         }
                     }
                 }
-            } else {
+            } else if (isExoPlayerPlaying) {
                 // 100% Pure ExoPlayer View (NO WebView in UI)
                 AndroidView(
                     factory = { ctx ->
@@ -260,6 +243,47 @@ fun PlayerScreen(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
+            } else {
+                // Active Stream Interceptor Engine (Attached to Window Hierarchy)
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            layoutParams = ViewGroup.LayoutParams(1, 1)
+
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.mediaPlaybackRequiresUserGesture = false
+                            settings.useWideViewPort = true
+                            settings.loadWithOverviewMode = true
+
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                            }
+
+                            settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+                            webViewClient = object : WebViewClient() {
+                                override fun shouldInterceptRequest(
+                                    view: WebView?,
+                                    request: WebResourceRequest?
+                                ): WebResourceResponse? {
+                                    val url = request?.url?.toString() ?: ""
+                                    if (url.contains(".m3u8") || url.contains(".mp4") || url.contains("master.m3u8") || url.contains("index.m3u8")) {
+                                        val cookies = CookieManager.getInstance().getCookie(serverUrls[currentServerIndex]) ?: ""
+                                        post {
+                                            playNativeExoPlayer(url, cookies, serverUrls[currentServerIndex])
+                                        }
+                                    }
+                                    return super.shouldInterceptRequest(view, request)
+                                }
+                            }
+
+                            loadUrl(serverUrls[currentServerIndex])
+                        }
+                    },
+                    modifier = Modifier.size(1.dp)
+                )
 
                 if (isVideoLoading) {
                     Box(
@@ -272,7 +296,7 @@ fun PlayerScreen(
                             CircularProgressIndicator(color = AccentRed)
                             Spacer(modifier = Modifier.height(14.dp))
                             Text(
-                                text = statusText,
+                                text = "Menghubungkan Stream Server ${currentServerIndex + 1}/${serverUrls.size}...",
                                 color = Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
