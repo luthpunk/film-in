@@ -34,7 +34,7 @@ import com.filmin.app.ui.theme.AccentRed
 import com.filmin.app.ui.theme.BgCard
 import com.filmin.app.ui.theme.BgDark
 
-@OptIn(UnstableApi::class)
+@OptIn(ExperimentalMaterial3Api::class, UnstableApi::class)
 @Composable
 fun PlayerScreen(
     detail: MovieDetail?,
