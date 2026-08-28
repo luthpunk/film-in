@@ -48,7 +48,7 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val extractor = remember { IdlixStreamExtractor(context) }
+    val extractor = remember { IdlixStreamExtractor() }
 
     var currentServerIndex by remember { mutableIntStateOf(0) }
     var isAllServersFailed by remember { mutableStateOf(false) }
@@ -56,7 +56,7 @@ fun PlayerScreen(
     var isExoReady by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("Mengekstrak stream video...") }
 
-    val servers = detail?.servers ?: emptyList()
+    val totalServers = 3
 
     BackHandler {
         onBackClick()
@@ -106,22 +106,21 @@ fun PlayerScreen(
     }
 
     fun startExtractionForServer(index: Int) {
-        if (servers.isEmpty() || index >= servers.size) {
+        if (index >= totalServers) {
             isAllServersFailed = true
             isVideoLoading = false
             return
         }
 
-        val server = servers[index]
         isVideoLoading = true
-        statusText = "Mengekstrak stream ${server.name} (${index + 1}/${servers.size})..."
+        statusText = "Mengekstrak stream Server ${index + 1}/$totalServers..."
 
         coroutineScope.launch {
-            val result = extractor.extractStreamUrl(server.url)
+            val result = extractor.extractStreamUrl(detail, index)
             if (result != null && result.streamUrl.isNotBlank()) {
                 playCapturedStream(result)
             } else {
-                if (index + 1 < servers.size) {
+                if (index + 1 < totalServers) {
                     currentServerIndex = index + 1
                     startExtractionForServer(index + 1)
                 } else {
@@ -147,7 +146,7 @@ fun PlayerScreen(
 
             override fun onPlayerError(error: PlaybackException) {
                 isExoReady = false
-                if (currentServerIndex + 1 < servers.size) {
+                if (currentServerIndex + 1 < totalServers) {
                     currentServerIndex += 1
                     startExtractionForServer(currentServerIndex)
                 } else {

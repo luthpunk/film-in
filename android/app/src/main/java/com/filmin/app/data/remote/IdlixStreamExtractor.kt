@@ -1,16 +1,12 @@
 package com.filmin.app.data.remote
 
-import android.content.Context
-import android.os.Handler
-import android.os.Looper
-import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
+import com.filmin.app.data.model.MovieDetail
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
+import java.util.regex.Pattern
 
 data class ExtractedStreamResult(
     val streamUrl: String,
@@ -18,109 +14,94 @@ data class ExtractedStreamResult(
     val embedUrl: String
 )
 
-class IdlixStreamExtractor(private val context: Context) {
+class IdlixStreamExtractor {
 
-    suspend fun extractStreamUrl(embedUrl: String): ExtractedStreamResult? = suspendCancellableCoroutine { continuation ->
-        Handler(Looper.getMainLooper()).post {
-            var isResumed = false
-            val webView = WebView(context)
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .build()
 
-            webView.settings.javaScriptEnabled = true
-            webView.settings.domStorageEnabled = true
-            webView.settings.mediaPlaybackRequiresUserGesture = false
-            webView.settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-            val timeoutHandler = Handler(Looper.getMainLooper())
-            val timeoutRunnable = Runnable {
-                if (!isResumed) {
-                    isResumed = true
-                    try {
-                        webView.stopLoading()
-                        webView.destroy()
-                    } catch (e: Exception) {}
-                    if (continuation.isActive) {
-                        continuation.resume(null)
-                    }
-                }
+    private fun fetchHtml(url: String, referer: String = "https://z2.idlixku.com/"): Pair<String, String> {
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", userAgent)
+            .header("Referer", referer)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .build()
+
+        return try {
+            client.newCall(request).execute().use { response ->
+                val cookies = response.headers.values("Set-Cookie").joinToString("; ")
+                val body = response.body?.string() ?: ""
+                Pair(body, cookies)
             }
-            timeoutHandler.postDelayed(timeoutRunnable, 8000)
-
-            fun handleFoundStream(foundUrl: String) {
-                if (!isResumed) {
-                    isResumed = true
-                    timeoutHandler.removeCallbacks(timeoutRunnable)
-                    val cookies = CookieManager.getInstance().getCookie(embedUrl) ?: ""
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            webView.stopLoading()
-                            webView.destroy()
-                        } catch (e: Exception) {}
-                    }
-                    if (continuation.isActive) {
-                        continuation.resume(
-                            ExtractedStreamResult(
-                                streamUrl = foundUrl,
-                                cookies = cookies,
-                                embedUrl = embedUrl
-                            )
-                        )
-                    }
-                }
-            }
-
-            // JavaScript Bridge for instant stream capture
-            webView.addJavascriptInterface(object {
-                @JavascriptInterface
-                fun onStreamFound(url: String) {
-                    handleFoundStream(url)
-                }
-            }, "AndroidBridge")
-
-            val jsInjectScript = """
-                (function() {
-                    if (window.__stream_bridge_injected__) return;
-                    window.__stream_bridge_injected__ = true;
-                    var origFetch = window.fetch;
-                    if (origFetch) {
-                        window.fetch = function() {
-                            var url = arguments[0];
-                            if (typeof url === 'string' && (url.indexOf('.m3u8') !== -1 || url.indexOf('master') !== -1 || url.indexOf('.mp4') !== -1)) {
-                                if (window.AndroidBridge) window.AndroidBridge.onStreamFound(url);
-                            }
-                            return origFetch.apply(this, arguments);
-                        };
-                    }
-                    var origOpen = XMLHttpRequest.prototype.open;
-                    if (origOpen) {
-                        XMLHttpRequest.prototype.open = function(method, url) {
-                            if (typeof url === 'string' && (url.indexOf('.m3u8') !== -1 || url.indexOf('master') !== -1 || url.indexOf('.mp4') !== -1)) {
-                                if (window.AndroidBridge) window.AndroidBridge.onStreamFound(url);
-                            }
-                            return origOpen.apply(this, arguments);
-                        };
-                    }
-                })();
-            """.trimIndent()
-
-            webView.webViewClient = object : WebViewClient() {
-                override fun shouldInterceptRequest(
-                    view: WebView?,
-                    request: WebResourceRequest?
-                ): WebResourceResponse? {
-                    val url = request?.url?.toString() ?: ""
-                    if (url.contains(".m3u8") || url.contains(".mp4") || url.contains("master.m3u8") || url.contains("index.m3u8")) {
-                        handleFoundStream(url)
-                    }
-                    return super.shouldInterceptRequest(view, request)
-                }
-
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    super.onPageFinished(view, url)
-                    view?.evaluateJavascript(jsInjectScript, null)
-                }
-            }
-
-            webView.loadUrl(embedUrl)
+        } catch (e: Exception) {
+            Pair("", "")
         }
+    }
+
+    suspend fun extractStreamUrl(detail: MovieDetail?, serverIndex: Int): ExtractedStreamResult? = withContext(Dispatchers.IO) {
+        if (detail == null) return@withContext null
+        val slug = detail.slug
+        val imdbId = detail.servers.getOrNull(serverIndex)?.url?.let {
+            if (it.contains("imdb=")) it.substringAfter("imdb=") else slug
+        } ?: slug
+
+        when (serverIndex) {
+            0 -> {
+                // Server 1: IDLIX Direct Embed
+                val playUrl = "https://z2.idlixku.com/movie/$slug?play=1"
+                val (html, cookies) = fetchHtml(playUrl)
+                val m3u8Match = Regex("https?://[^\"'\\s]+\\.m3u8[^\"'\\s]*").find(html)?.value
+                    ?: Regex("https?://[^\"'\\s]+\\.mp4[^\"'\\s]*").find(html)?.value
+
+                if (!m3u8Match.isNullOrBlank()) {
+                    return@withContext ExtractedStreamResult(
+                        streamUrl = m3u8Match,
+                        cookies = cookies,
+                        embedUrl = playUrl
+                    )
+                }
+            }
+            1 -> {
+                // Server 2: VidSrc Provider (IMDb ID)
+                val vidsrcUrl = "https://vidsrc.to/embed/movie/$imdbId"
+                val (html, cookies) = fetchHtml(vidsrcUrl, "https://vidsrc.to/")
+                val iframeMatch = Regex("href=[\"'](https?://vsembed\\.ru/embed/[^\"']+)[\"']").find(html)?.groupValues?.get(1)
+                    ?: Regex("src=[\"'](https?://[^\"']+/embed/[^\"']+)[\"']").find(html)?.groupValues?.get(1)
+
+                val targetUrl = iframeMatch ?: vidsrcUrl
+                val (embedHtml, embedCookies) = fetchHtml(targetUrl, vidsrcUrl)
+                val m3u8Match = Regex("https?://[^\"'\\s]+\\.m3u8[^\"'\\s]*").find(embedHtml)?.value
+                    ?: Regex("https?://[^\"'\\s]+\\.mp4[^\"'\\s]*").find(embedHtml)?.value
+
+                if (!m3u8Match.isNullOrBlank()) {
+                    return@withContext ExtractedStreamResult(
+                        streamUrl = m3u8Match,
+                        cookies = embedCookies.ifBlank { cookies },
+                        embedUrl = targetUrl
+                    )
+                }
+            }
+            2 -> {
+                // Server 3: AutoEmbed Provider
+                val autoembedUrl = "https://autoembed.co/movie/imdb/$imdbId"
+                val (html, cookies) = fetchHtml(autoembedUrl, "https://autoembed.co/")
+                val m3u8Match = Regex("https?://[^\"'\\s]+\\.m3u8[^\"'\\s]*").find(html)?.value
+                    ?: Regex("https?://[^\"'\\s]+\\.mp4[^\"'\\s]*").find(html)?.value
+
+                if (!m3u8Match.isNullOrBlank()) {
+                    return@withContext ExtractedStreamResult(
+                        streamUrl = m3u8Match,
+                        cookies = cookies,
+                        embedUrl = autoembedUrl
+                    )
+                }
+            }
+        }
+        null
     }
 }
