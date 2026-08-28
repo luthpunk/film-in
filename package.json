@@ -1,0 +1,21 @@
+{
+  "name": "film-in",
+  "version": "1.0.0",
+  "description": "Aplikasi Streaming Film & Serial TV modern dengan Scraper IDLIX",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "cd backend && npm start",
+    "dev": "cd backend && npm run dev",
+    "install-all": "cd backend && npm install"
+  },
+  "keywords": [
+    "film-in",
+    "streaming",
+    "idlix-scraper",
+    "movie-app",
+    "express",
+    "cinema-ui"
+  ],
+  "author": "FilmIn Team",
+  "license": "MIT"
+}

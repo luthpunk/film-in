@@ -1,0 +1,29 @@
+{
+  "name": "film-in-backend",
+  "version": "1.0.0",
+  "description": "Backend Scraper API for FilmIn streaming application from IDLIX",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "movie",
+    "streaming",
+    "idlix",
+    "scraper",
+    "api"
+  ],
+  "author": "FilmIn Team",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.8",
+    "cheerio": "^1.0.0-rc.12",
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
