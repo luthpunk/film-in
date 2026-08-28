@@ -2,12 +2,8 @@
 
 package com.filmin.app.ui.screens
 
-import android.annotation.SuppressLint
 import android.net.Uri
-import android.os.Build
-import android.view.View
 import android.view.ViewGroup
-import android.webkit.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -37,30 +33,35 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.PlayerView
 import com.filmin.app.data.model.MovieDetail
+import com.filmin.app.data.remote.IdlixStreamExtractor
 import com.filmin.app.ui.theme.AccentRed
 import com.filmin.app.ui.theme.BgCard
 import com.filmin.app.ui.theme.BgDark
+import kotlinx.coroutines.launch
 import kotlin.OptIn
 
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PlayerScreen(
     detail: MovieDetail?,
     onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
-    var isExoPlayerPlaying by remember { mutableStateOf(false) }
-    var isVideoLoading by remember { mutableStateOf(true) }
-    var capturedM3u8Url by remember { mutableStateOf<String?>(null) }
-    var isPlayerError by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    val extractor = remember { IdlixStreamExtractor(context) }
 
-    val playUrl = "https://z2.idlixku.com/movie/${detail?.slug ?: ""}?play=1"
+    var currentServerIndex by remember { mutableIntStateOf(0) }
+    var isAllServersFailed by remember { mutableStateOf(false) }
+    var isVideoLoading by remember { mutableStateOf(true) }
+    var isExoReady by remember { mutableStateOf(false) }
+    var statusText by remember { mutableStateOf("Mengekstrak stream video...") }
+
+    val servers = detail?.servers ?: emptyList()
 
     BackHandler {
         onBackClick()
     }
 
-    // Initialize ExoPlayer
+    // Initialize ExoPlayer (100% Pure Native Player, NO WebView in Layout)
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             playWhenReady = true
@@ -73,32 +74,60 @@ fun PlayerScreen(
         }
     }
 
-    fun playNativeExoPlayer(m3u8Url: String) {
-        try {
-            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-                .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .setDefaultRequestProperties(
-                    mapOf(
-                        "Referer" to "https://z2.idlixku.com/",
-                        "Accept" to "*/*"
-                    )
+    fun playCapturedStream(streamUrl: String, embedUrl: String) {
+        isVideoLoading = true
+        statusText = "Menghubungkan ExoPlayer..."
+
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Referer" to embedUrl,
+                    "Accept" to "*/*"
                 )
+            )
 
-            val mediaSource: MediaSource = if (m3u8Url.contains(".m3u8")) {
-                HlsMediaSource.Factory(httpDataSourceFactory)
-                    .createMediaSource(MediaItem.fromUri(Uri.parse(m3u8Url)))
-            } else {
-                ProgressiveMediaSource.Factory(httpDataSourceFactory)
-                    .createMediaSource(MediaItem.fromUri(Uri.parse(m3u8Url)))
-            }
-
-            exoPlayer.setMediaSource(mediaSource)
-            exoPlayer.prepare()
-            isExoPlayerPlaying = true
-            isVideoLoading = false
-        } catch (e: Exception) {
-            isExoPlayerPlaying = false
+        val mediaSource: MediaSource = if (streamUrl.contains(".m3u8")) {
+            HlsMediaSource.Factory(httpDataSourceFactory)
+                .createMediaSource(MediaItem.fromUri(Uri.parse(streamUrl)))
+        } else {
+            ProgressiveMediaSource.Factory(httpDataSourceFactory)
+                .createMediaSource(MediaItem.fromUri(Uri.parse(streamUrl)))
         }
+
+        exoPlayer.setMediaSource(mediaSource)
+        exoPlayer.prepare()
+    }
+
+    fun startExtractionForServer(index: Int) {
+        if (servers.isEmpty() || index >= servers.size) {
+            isAllServersFailed = true
+            isVideoLoading = false
+            return
+        }
+
+        val server = servers[index]
+        isVideoLoading = true
+        statusText = "Mengekstrak stream ${server.name} (${index + 1}/${servers.size})..."
+
+        coroutineScope.launch {
+            val capturedUrl = extractor.extractStreamUrl(server.url)
+            if (!capturedUrl.isNullOrBlank()) {
+                playCapturedStream(capturedUrl, server.url)
+            } else {
+                if (index + 1 < servers.size) {
+                    currentServerIndex = index + 1
+                    startExtractionForServer(index + 1)
+                } else {
+                    isAllServersFailed = true
+                    isVideoLoading = false
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        startExtractionForServer(0)
     }
 
     DisposableEffect(exoPlayer) {
@@ -106,12 +135,19 @@ fun PlayerScreen(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
                     isVideoLoading = false
-                    isExoPlayerPlaying = true
+                    isExoReady = true
                 }
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                isExoPlayerPlaying = false
+                isExoReady = false
+                if (currentServerIndex + 1 < servers.size) {
+                    currentServerIndex += 1
+                    startExtractionForServer(currentServerIndex)
+                } else {
+                    isAllServersFailed = true
+                    isVideoLoading = false
+                }
             }
         }
         exoPlayer.addListener(listener)
@@ -126,13 +162,13 @@ fun PlayerScreen(
                 title = {
                     Column {
                         Text(
-                            text = detail?.title ?: "Pemutar Stream FilmIn",
+                            text = detail?.title ?: "Pemutar Video Native",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
-                            text = if (isExoPlayerPlaying) "Pemutar Native ExoPlayer 1080p HD" else "Menyiapkan Stream Video...",
+                            text = if (isExoReady) "Native ExoPlayer HLS 1080p" else statusText,
                             fontSize = 11.sp,
                             color = AccentRed
                         )
@@ -154,105 +190,8 @@ fun PlayerScreen(
                 .padding(innerPadding)
                 .background(Color.Black)
         ) {
-            if (isExoPlayerPlaying) {
-                // Pure Native ExoPlayer View
-                AndroidView(
-                    factory = { ctx ->
-                        PlayerView(ctx).apply {
-                            player = exoPlayer
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-                            useController = true
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                // Live Stream Extractor & High-Speed Stream Engine Container
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.mediaPlaybackRequiresUserGesture = false
-                            settings.allowFileAccess = true
-                            settings.allowContentAccess = true
-                            settings.useWideViewPort = true
-                            settings.loadWithOverviewMode = true
-
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                            }
-
-                            settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
-                            webViewClient = object : WebViewClient() {
-                                override fun shouldInterceptRequest(
-                                    view: WebView?,
-                                    request: WebResourceRequest?
-                                ): WebResourceResponse? {
-                                    val url = request?.url?.toString() ?: ""
-                                    if ((url.contains(".m3u8") || url.contains(".mp4")) && capturedM3u8Url == null) {
-                                        capturedM3u8Url = url
-                                        post {
-                                            playNativeExoPlayer(url)
-                                        }
-                                    }
-                                    return super.shouldInterceptRequest(view, request)
-                                }
-
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    super.onPageFinished(view, url)
-                                    isVideoLoading = false
-                                }
-
-                                override fun onReceivedError(
-                                    view: WebView?,
-                                    errorCode: Int,
-                                    description: String?,
-                                    failingUrl: String?
-                                ) {
-                                    super.onReceivedError(view, errorCode, description, failingUrl)
-                                    isPlayerError = true
-                                }
-                            }
-
-                            loadUrl(playUrl)
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            if (isVideoLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.85f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = AccentRed)
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text(
-                            text = "Menghubungkan Stream Video IDLIX...",
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-
-            if (isPlayerError && !isExoPlayerPlaying && capturedM3u8Url == null) {
+            if (isAllServersFailed) {
+                // Informative Dialog (NO WebView Fallback)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -283,7 +222,7 @@ fun PlayerScreen(
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             Text(
-                                text = "Server video IDLIX saat ini sedang mengalami pembatasan akses atau pemeliharaan jaringan. Silakan coba kembali beberapa saat lagi atau pilih judul film lainnya.",
+                                text = "Ekstraksi stream HLS (.m3u8) dari server IDLIX gagal atau sedang dalam pembatasan Cloudflare. Silakan coba judul film lainnya.",
                                 fontSize = 13.sp,
                                 color = Color.White.copy(alpha = 0.7f),
                                 textAlign = TextAlign.Center,
@@ -298,6 +237,41 @@ fun PlayerScreen(
                             ) {
                                 Text("Kembali ke Detail Film", fontWeight = FontWeight.Bold, color = Color.White)
                             }
+                        }
+                    }
+                }
+            } else {
+                // 100% Pure ExoPlayer View (NO WebView in UI)
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            player = exoPlayer
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            useController = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                if (isVideoLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.95f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = AccentRed)
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = statusText,
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
                     }
                 }
