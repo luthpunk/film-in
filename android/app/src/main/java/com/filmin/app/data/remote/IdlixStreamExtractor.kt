@@ -13,7 +13,7 @@ import kotlin.coroutines.resume
 
 class IdlixStreamExtractor(private val context: Context) {
 
-    private val m3u8Regex = Pattern.compile("https?://[^\s\"']+\\.(m3u8|mp4)[^\s\"']*")
+    private val m3u8Regex = Pattern.compile("""https?://[^\s"']+\.(m3u8|mp4)[^\s"']*""")
 
     suspend fun extractStreamUrl(embedUrl: String): String? = suspendCancellableCoroutine { continuation ->
         Handler(Looper.getMainLooper()).post {
