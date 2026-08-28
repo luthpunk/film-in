@@ -28,12 +28,16 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.PlayerView
 import com.filmin.app.data.model.MovieDetail
+import com.filmin.app.data.remote.IdlixStreamExtractor
 import com.filmin.app.ui.theme.AccentRed
 import com.filmin.app.ui.theme.BgCard
 import com.filmin.app.ui.theme.BgDark
+import kotlinx.coroutines.launch
 import kotlin.OptIn
 
 @Composable
@@ -42,10 +46,13 @@ fun PlayerScreen(
     onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val extractor = remember { IdlixStreamExtractor(context) }
+
     var currentServerIndex by remember { mutableIntStateOf(0) }
     var isAllServersFailed by remember { mutableStateOf(false) }
     var isVideoLoading by remember { mutableStateOf(true) }
-    var currentServerName by remember { mutableStateOf("Server 1 (Otomatis)") }
+    var statusText by remember { mutableStateOf("Mengekstrak stream video...") }
 
     val servers = detail?.servers ?: emptyList()
 
@@ -66,35 +73,60 @@ fun PlayerScreen(
         }
     }
 
-    fun playCurrentServer() {
-        if (servers.isEmpty() || currentServerIndex >= servers.size) {
-            isAllServersFailed = true
-            isVideoLoading = false
-            return
-        }
-
-        val server = servers[currentServerIndex]
-        currentServerName = server.name
+    fun playCapturedStream(streamUrl: String, embedUrl: String) {
         isVideoLoading = true
+        statusText = "Menghubungkan ke ExoPlayer..."
 
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .setDefaultRequestProperties(
                 mapOf(
-                    "Referer" to "https://z2.idlixku.com/",
+                    "Referer" to embedUrl,
                     "Accept" to "*/*"
                 )
             )
 
-        val mediaSource = ProgressiveMediaSource.Factory(httpDataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(Uri.parse(server.url)))
+        val mediaSource: MediaSource = if (streamUrl.contains(".m3u8")) {
+            HlsMediaSource.Factory(httpDataSourceFactory)
+                .createMediaSource(MediaItem.fromUri(Uri.parse(streamUrl)))
+        } else {
+            ProgressiveMediaSource.Factory(httpDataSourceFactory)
+                .createMediaSource(MediaItem.fromUri(Uri.parse(streamUrl)))
+        }
 
         exoPlayer.setMediaSource(mediaSource)
         exoPlayer.prepare()
     }
 
-    LaunchedEffect(currentServerIndex) {
-        playCurrentServer()
+    fun startExtractionForServer(index: Int) {
+        if (servers.isEmpty() || index >= servers.size) {
+            isAllServersFailed = true
+            isVideoLoading = false
+            return
+        }
+
+        val server = servers[index]
+        isVideoLoading = true
+        statusText = "Mengekstrak stream ${server.name} (${index + 1}/${servers.size})..."
+
+        coroutineScope.launch {
+            val capturedUrl = extractor.extractStreamUrl(server.url)
+            if (!capturedUrl.isNullOrBlank()) {
+                playCapturedStream(capturedUrl, server.url)
+            } else {
+                if (index + 1 < servers.size) {
+                    currentServerIndex = index + 1
+                    startExtractionForServer(index + 1)
+                } else {
+                    isAllServersFailed = true
+                    isVideoLoading = false
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        startExtractionForServer(0)
     }
 
     DisposableEffect(exoPlayer) {
@@ -106,9 +138,9 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                // Auto failover to next server if current server fails!
                 if (currentServerIndex + 1 < servers.size) {
                     currentServerIndex += 1
+                    startExtractionForServer(currentServerIndex)
                 } else {
                     isAllServersFailed = true
                     isVideoLoading = false
@@ -133,8 +165,8 @@ fun PlayerScreen(
                             color = Color.White
                         )
                         Text(
-                            text = "Menghubungkan: $currentServerName",
-                            fontSize = 12.sp,
+                            text = statusText,
+                            fontSize = 11.sp,
                             color = AccentRed
                         )
                     }
@@ -232,7 +264,7 @@ fun PlayerScreen(
                             CircularProgressIndicator(color = AccentRed)
                             Spacer(modifier = Modifier.height(14.dp))
                             Text(
-                                text = "Memutar Otomatis (Mencoba Server ${currentServerIndex + 1}/${servers.size})...",
+                                text = statusText,
                                 color = Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
