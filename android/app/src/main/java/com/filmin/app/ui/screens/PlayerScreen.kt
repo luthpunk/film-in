@@ -1,9 +1,10 @@
+@file:OptIn(ExperimentalMaterial3Api::class, UnstableApi::class)
+
 package com.filmin.app.ui.screens
 
 import android.net.Uri
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
-import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,8 +34,8 @@ import com.filmin.app.data.model.MovieDetail
 import com.filmin.app.ui.theme.AccentRed
 import com.filmin.app.ui.theme.BgCard
 import com.filmin.app.ui.theme.BgDark
+import kotlin.OptIn
 
-@OptIn(ExperimentalMaterial3Api::class, UnstableApi::class)
 @Composable
 fun PlayerScreen(
     detail: MovieDetail?,
