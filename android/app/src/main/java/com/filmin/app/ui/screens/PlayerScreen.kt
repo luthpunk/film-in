@@ -33,6 +33,7 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.PlayerView
 import com.filmin.app.data.model.MovieDetail
+import com.filmin.app.data.remote.ExtractedStreamResult
 import com.filmin.app.data.remote.IdlixStreamExtractor
 import com.filmin.app.ui.theme.AccentRed
 import com.filmin.app.ui.theme.BgCard
@@ -61,7 +62,7 @@ fun PlayerScreen(
         onBackClick()
     }
 
-    // Initialize ExoPlayer (100% Pure Native Player, NO WebView in Layout)
+    // Initialize ExoPlayer (100% Pure Native Player, NO WebView in UI layout)
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             playWhenReady = true
@@ -74,25 +75,30 @@ fun PlayerScreen(
         }
     }
 
-    fun playCapturedStream(streamUrl: String, embedUrl: String) {
+    fun playCapturedStream(result: ExtractedStreamResult) {
         isVideoLoading = true
-        statusText = "Menghubungkan ExoPlayer..."
+        statusText = "Menghubungkan ExoPlayer dengan Session Cookie..."
+
+        val reqProperties = mutableMapOf(
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer" to result.embedUrl,
+            "Origin" to "https://z2.idlixku.com",
+            "Accept" to "*/*"
+        )
+        if (result.cookies.isNotBlank()) {
+            reqProperties["Cookie"] = result.cookies
+        }
 
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .setDefaultRequestProperties(
-                mapOf(
-                    "Referer" to embedUrl,
-                    "Accept" to "*/*"
-                )
-            )
+            .setUserAgent(reqProperties["User-Agent"] ?: "")
+            .setDefaultRequestProperties(reqProperties)
 
-        val mediaSource: MediaSource = if (streamUrl.contains(".m3u8")) {
+        val mediaSource: MediaSource = if (result.streamUrl.contains(".m3u8")) {
             HlsMediaSource.Factory(httpDataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(Uri.parse(streamUrl)))
+                .createMediaSource(MediaItem.fromUri(Uri.parse(result.streamUrl)))
         } else {
             ProgressiveMediaSource.Factory(httpDataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(Uri.parse(streamUrl)))
+                .createMediaSource(MediaItem.fromUri(Uri.parse(result.streamUrl)))
         }
 
         exoPlayer.setMediaSource(mediaSource)
@@ -111,9 +117,9 @@ fun PlayerScreen(
         statusText = "Mengekstrak stream ${server.name} (${index + 1}/${servers.size})..."
 
         coroutineScope.launch {
-            val capturedUrl = extractor.extractStreamUrl(server.url)
-            if (!capturedUrl.isNullOrBlank()) {
-                playCapturedStream(capturedUrl, server.url)
+            val result = extractor.extractStreamUrl(server.url)
+            if (result != null && result.streamUrl.isNotBlank()) {
+                playCapturedStream(result)
             } else {
                 if (index + 1 < servers.size) {
                     currentServerIndex = index + 1
@@ -168,7 +174,7 @@ fun PlayerScreen(
                             color = Color.White
                         )
                         Text(
-                            text = if (isExoReady) "Native ExoPlayer HLS 1080p" else statusText,
+                            text = if (isExoReady) "Native ExoPlayer HLS 1080p HD" else statusText,
                             fontSize = 11.sp,
                             color = AccentRed
                         )
