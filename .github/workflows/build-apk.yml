@@ -54,9 +54,9 @@ jobs:
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "FilmIn Release v1.0.0 (Automated Build)"
-          body: "APK Release resmi FilmIn - Aplikasi Streaming Film & Serial TV IDLIX."
+          tag_name: v2.0.0
+          name: "FilmIn Native Release v2.0.0 (Pure Kotlin)"
+          body: "APK Release Resmi FilmIn - Aplikasi Streaming Film & Serial TV Native Kotlin."
           draft: false
           prerelease: false
           files: |

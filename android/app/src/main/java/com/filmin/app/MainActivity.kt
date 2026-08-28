@@ -1,161 +1,166 @@
 package com.filmin.app
 
-import android.annotation.SuppressLint
-import android.content.pm.ActivityInfo
-import android.graphics.Color
-import android.os.Build
+import android.net.Uri
 import android.os.Bundle
-import android.view.View
-import android.view.WindowManager
-import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
-import android.webkit.PermissionRequest
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.FrameLayout
-import androidx.appcompat.app.AppCompatActivity
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.concurrent.Executors
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.*
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.filmin.app.data.model.HomeFeed
+import com.filmin.app.data.model.MovieDetail
+import com.filmin.app.data.model.MovieItem
+import com.filmin.app.data.remote.IdlixDirectScraper
+import com.filmin.app.ui.screens.*
+import com.filmin.app.ui.theme.FilmInTheme
+import kotlinx.coroutines.launch
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
 
-    private lateinit var webView: WebView
-    private lateinit var customViewContainer: FrameLayout
-    private var customView: View? = null
-    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
-    private val executor = Executors.newFixedThreadPool(4)
+    private val scraper = IdlixDirectScraper()
 
-    @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Custom Container Layout for Fullscreen Video & WebView
-        val rootLayout = FrameLayout(this)
-        rootLayout.setBackgroundColor(Color.parseColor("#0F1014"))
+        setContent {
+            FilmInTheme {
+                var homeFeed by remember { mutableStateOf<HomeFeed?>(null) }
+                var isHomeLoading by remember { mutableStateOf(true) }
 
-        webView = WebView(this)
-        customViewContainer = FrameLayout(this)
-        customViewContainer.visibility = View.GONE
-        customViewContainer.setBackgroundColor(Color.BLACK)
+                var currentDetail by remember { mutableStateOf<MovieDetail?>(null) }
+                var isDetailLoading by remember { mutableStateOf(false) }
 
-        rootLayout.addView(webView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-        rootLayout.addView(customViewContainer, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                var searchResults by remember { mutableStateOf<List<MovieItem>>(emptyList()) }
+                var isSearching by remember { mutableStateOf(false) }
 
-        setContentView(rootLayout)
+                var bookmarks by remember { mutableStateOf<List<MovieItem>>(emptyList()) }
 
-        // Configure WebView for High-Performance Direct Streaming & Local Scraping
-        val settings = webView.settings
-        settings.javaScriptEnabled = true
-        settings.domStorageEnabled = true
-        settings.databaseEnabled = true
-        settings.mediaPlaybackRequiresUserGesture = false
-        settings.allowFileAccess = true
-        settings.allowContentAccess = true
-        settings.useWideViewPort = true
-        settings.loadWithOverviewMode = true
-        settings.setSupportZoom(false)
+                val navController = rememberNavController()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
-        }
-
-        settings.userAgentString = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-
-        // Native Android Bridge for Direct Local On-Device Scraping
-        webView.addJavascriptInterface(AndroidScraperBridge(), "AndroidScraper")
-
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                return false
-            }
-        }
-
-        // WebChromeClient to handle HTML5 / Iframe Fullscreen Streaming
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-                if (customView != null) {
-                    onHideCustomView()
-                    return
+                // Fetch Home Feed on Launch directly on IO thread
+                LaunchedEffect(Unit) {
+                    isHomeLoading = true
+                    homeFeed = scraper.getHomeFeed()
+                    isHomeLoading = false
                 }
-                customView = view
-                customViewCallback = callback
-                customViewContainer.addView(view, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-                customViewContainer.visibility = View.VISIBLE
-                webView.visibility = View.GONE
 
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-            }
+                NavHost(navController = navController, startDestination = "home") {
+                    composable("home") {
+                        HomeScreen(
+                            feed = homeFeed ?: HomeFeed(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()),
+                            isLoading = isHomeLoading,
+                            onMovieClick = { slug, type ->
+                                isDetailLoading = true
+                                currentDetail = null
+                                navController.navigate("detail/$slug/$type")
+                                lifecycleScope.launch {
+                                    currentDetail = scraper.getMovieDetail(slug)
+                                    isDetailLoading = false
+                                }
+                            },
+                            onSearchClick = {
+                                searchResults = homeFeed?.trending ?: emptyList()
+                                navController.navigate("search")
+                            },
+                            onBookmarkClick = {
+                                navController.navigate("bookmarks")
+                            }
+                        )
+                    }
 
-            override fun onHideCustomView() {
-                if (customView == null) return
-                customViewContainer.removeView(customView)
-                customViewContainer.visibility = View.GONE
-                webView.visibility = View.VISIBLE
-                customView = null
-                customViewCallback?.onCustomViewHidden()
+                    composable(
+                        route = "detail/{slug}/{type}",
+                        arguments = listOf(
+                            navArgument("slug") { type = NavType.StringType },
+                            navArgument("type") { type = NavType.StringType }
+                        )
+                    ) { backStackEntry ->
+                        val slug = backStackEntry.arguments?.getString("slug") ?: ""
+                        val type = backStackEntry.arguments?.getString("type") ?: "movie"
 
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-            }
+                        LaunchedEffect(slug) {
+                            if (currentDetail == null || currentDetail?.slug != slug) {
+                                isDetailLoading = true
+                                currentDetail = scraper.getMovieDetail(slug)
+                                isDetailLoading = false
+                            }
+                        }
 
-            override fun onPermissionRequest(request: PermissionRequest?) {
-                request?.grant(request.resources)
-            }
-        }
+                        DetailScreen(
+                            detail = currentDetail,
+                            isLoading = isDetailLoading,
+                            onBackClick = { navController.popBackStack() },
+                            onPlayServerClick = { streamUrl, serverName ->
+                                val encodedUrl = Uri.encode(streamUrl)
+                                val encodedName = Uri.encode(serverName)
+                                navController.navigate("player/$encodedUrl/$encodedName")
+                            }
+                        )
+                    }
 
-        // Load bundled web app directly from APK assets or local server
-        webView.loadUrl("file:///android_asset/www/index.html")
-    }
+                    composable(
+                        route = "player/{streamUrl}/{serverName}",
+                        arguments = listOf(
+                            navArgument("streamUrl") { type = NavType.StringType },
+                            navArgument("serverName") { type = NavType.StringType }
+                        )
+                    ) { backStackEntry ->
+                        val rawUrl = backStackEntry.arguments?.getString("streamUrl") ?: ""
+                        val streamUrl = Uri.decode(rawUrl)
+                        val serverName = Uri.decode(backStackEntry.arguments?.getString("serverName") ?: "Server Stream")
 
-    // Native Local Scraper Bridge class
-    inner class AndroidScraperBridge {
-        @JavascriptInterface
-        fun fetchHtml(targetPath: String): String {
-            return try {
-                val fullUrl = if (targetPath.startsWith("http")) targetPath else "https://z2.idlixku.com$targetPath"
-                val url = URL(fullUrl)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
+                        PlayerScreen(
+                            streamUrl = streamUrl,
+                            serverName = serverName,
+                            onBackClick = { navController.popBackStack() }
+                        )
+                    }
 
-                val reader = BufferedReader(InputStreamReader(conn.inputStream))
-                val sb = StringBuilder()
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    sb.append(line).append("\n")
+                    composable("search") {
+                        SearchScreen(
+                            results = searchResults,
+                            isSearching = isSearching,
+                            onSearchQueryChange = { query ->
+                                lifecycleScope.launch {
+                                    isSearching = true
+                                    searchResults = scraper.search(query)
+                                    isSearching = false
+                                }
+                            },
+                            onMovieClick = { slug, type ->
+                                isDetailLoading = true
+                                currentDetail = null
+                                navController.navigate("detail/$slug/$type")
+                                lifecycleScope.launch {
+                                    currentDetail = scraper.getMovieDetail(slug)
+                                    isDetailLoading = false
+                                }
+                            },
+                            onBackClick = { navController.popBackStack() }
+                        )
+                    }
+
+                    composable("bookmarks") {
+                        BookmarkScreen(
+                            bookmarks = bookmarks,
+                            onMovieClick = { slug, type ->
+                                isDetailLoading = true
+                                currentDetail = null
+                                navController.navigate("detail/$slug/$type")
+                                lifecycleScope.launch {
+                                    currentDetail = scraper.getMovieDetail(slug)
+                                    isDetailLoading = false
+                                }
+                            },
+                            onBackClick = { navController.popBackStack() }
+                        )
+                    }
                 }
-                reader.close()
-                sb.toString()
-            } catch (e: Exception) {
-                ""
             }
         }
-    }
-
-    override fun onBackPressed() {
-        if (customView != null) {
-            webView.webChromeClient?.onHideCustomView()
-        } else if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            super.onBackPressed()
-        }
-    }
-
-    override fun onDestroy() {
-        executor.shutdown()
-        webView.destroy()
-        super.onDestroy()
     }
 }
